@@ -1,68 +1,33 @@
 // src/app/api/create-checkout-session/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
-import { supabase } from "@/lib/supabaseClient"; // or サーバー用クライアント
+import { supabase } from "@/lib/supabaseClient";
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: "2024-06-20", // その時点の最新に合わせて
-});
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!); // ←ここをシンプルに
 
 export async function POST(req: NextRequest) {
   try {
-    const { origin } = new URL(req.url);
+    const { userId } = await req.json();
 
-    // 1. ログインユーザーを取得（ClientではなくServer用のSupabaseクライアントを使うのが理想）
-    // ここは擬似コード的に書くね
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
-
-    if (userError || !user) {
-      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
-    }
-
-    // 2. ユーザーに対応する Stripe customer を探す or 作る
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("stripe_customer_id")
-      .eq("user_id", user.id)
-      .single();
-
-    let customerId = profile?.stripe_customer_id;
-
-    if (!customerId) {
-      const customer = await stripe.customers.create({
-        email: user.email ?? undefined,
-        metadata: { supabase_user_id: user.id },
-      });
-      customerId = customer.id;
-
-      await supabase
-        .from("profiles")
-        .update({ stripe_customer_id: customerId })
-        .eq("user_id", user.id);
-    }
-
-    // 3. Checkout セッション作成
+    // ここで userId から profiles を引いて price_id や customer_id を使うなど
+    // とりあえず仮で固定の商品をつくる例
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
-      customer: customerId,
       line_items: [
         {
-          price: process.env.STRIPE_PRICE_ID!, // あらかじめ環境変数に
+          price: process.env.STRIPE_PRICE_ID!,
           quantity: 1,
         },
       ],
-      success_url: `${origin}/billing/success`,
-      cancel_url: `${origin}/billing/cancel`,
-      metadata: {
-        supabase_user_id: user.id,
-      },
+      success_url: `${process.env.NEXT_PUBLIC_APP_URL}/billing/success`,
+      cancel_url: `${process.env.NEXT_PUBLIC_APP_URL}/billing/cancel`,
     });
 
     return NextResponse.json({ url: session.url });
-  } catch (error: any) {
+  } catch (error) {
     console.error("create-checkout-session error:", error);
     return NextResponse.json(
-      { error: error.message ?? "Internal error" },
+      { error: "Failed to create checkout session" },
       { status: 500 }
     );
   }
