@@ -1,10 +1,13 @@
+// src/app/entries/[id]/page.tsx
 "use client";
 
 import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabaseClient";
 import Link from "next/link";
+import { supabase } from "@/lib/supabaseClient";
 import { Button } from "@/components/ui/button";
+import { AnalyzeDiaryButton } from "./AnalyzeDiaryButton";
+import { ProGate } from "@/components/ProGate";
 
 type DiaryEntry = {
   id: string;
@@ -84,63 +87,76 @@ export default function EntryDetailPage() {
 
   if (loading) {
     return (
-      <main className="min-h-screen px-4 py-8 max-w-2xl mx-auto">
-        <p>読み込み中...</p>
-      </main>
+      <ProGate>
+        <main className="min-h-screen px-4 py-8 max-w-2xl mx-auto">
+          <p>読み込み中...</p>
+        </main>
+      </ProGate>
     );
   }
 
   if (error || !entry) {
     return (
-      <main className="min-h-screen px-4 py-8 max-w-2xl mx-auto">
-        <h1 className="text-xl font-bold mb-4">読み込みエラー</h1>
-        <p className="text-red-600 mb-4">{error}</p>
-        <p className="text-sm text-gray-600 mb-2">id: {id}</p>
-        <Link
-          href="/entries"
-          className="inline-block text-blue-600 underline"
-        >
-          一覧に戻る
-        </Link>
-      </main>
+      <ProGate>
+        <main className="min-h-screen px-4 py-8 max-w-2xl mx-auto">
+          <h1 className="text-xl font-bold mb-4">読み込みエラー</h1>
+          <p className="text-red-600 mb-4">{error}</p>
+          <p className="text-sm text-gray-600 mb-2">id: {id}</p>
+          <Link
+            href="/entries"
+            className="inline-block text-blue-600 underline"
+          >
+            一覧に戻る
+          </Link>
+        </main>
+      </ProGate>
     );
   }
 
   return (
-    <main className="min-h-screen px-4 py-8 max-w-2xl mx-auto">
-      <header className="mb-4 flex items-center justify-between gap-2">
-        <Link
-          href="/entries"
-          className="text-sm text-blue-600 hover:underline"
-        >
-          ← 一覧に戻る
-        </Link>
-
-        <div className="flex gap-2">
-          <Link href={`/entries/${entry.id}/edit`}>
-            <Button variant="outline" size="sm">
-              編集
-            </Button>
-          </Link>
-          <Button
-            variant="destructive"
-            size="sm"
-            onClick={handleDelete}
-            disabled={deleting}
+    <ProGate>
+      <main className="min-h-screen px-4 py-8 max-w-2xl mx-auto">
+        <header className="mb-4 flex items-center justify-between gap-2">
+          <Link
+            href="/entries"
+            className="text-sm text-blue-600 hover:underline"
           >
-            {deleting ? "削除中..." : "削除"}
-          </Button>
+            ← 一覧に戻る
+          </Link>
+
+          <div className="flex gap-2">
+            <Link href={`/entries/${entry.id}/edit`}>
+              <Button variant="outline" size="sm">
+                編集
+              </Button>
+            </Link>
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={handleDelete}
+              disabled={deleting}
+            >
+              {deleting ? "削除中..." : "削除"}
+            </Button>
+          </div>
+        </header>
+
+        <h1 className="text-3xl font-bold mb-2">{entry.title}</h1>
+
+        <div className="text-sm text-gray-500 mb-4">
+          {new Date(entry.created_at).toLocaleString("ja-JP")} ／{" "}
+          <span className="text-2xl">{moodToEmoji(entry.mood)}</span>
         </div>
-      </header>
 
-      <h1 className="text-3xl font-bold mb-2">{entry.title}</h1>
+        <article className="prose whitespace-pre-wrap mb-6">
+          {entry.body}
+        </article>
 
-      <div className="text-sm text-gray-500 mb-4">
-        {new Date(entry.created_at).toLocaleString("ja-JP")} ／{" "}
-        <span className="text-2xl">{moodToEmoji(entry.mood)}</span>
-      </div>
-
-      <article className="prose whitespace-pre-wrap">{entry.body}</article>
-    </main>
+        {/* AI 解析ボタン（ここも Pro 限定の世界なのでこのままでOK） */}
+        <div className="mt-4">
+          <AnalyzeDiaryButton diaryId={entry.id} diaryText={entry.body} />
+        </div>
+      </main>
+    </ProGate>
   );
 }

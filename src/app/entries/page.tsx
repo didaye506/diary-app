@@ -1,19 +1,13 @@
-// src/app/entries/page.tsx
+"use client";
+
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
-import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-  CardContent,
-} from "@/components/ui/card";
+import { ProGate } from "@/components/ProGate";
 
 type DiaryEntry = {
   id: string;
   title: string;
-  body: string;
   mood: string;
   created_at: string;
 };
@@ -29,66 +23,76 @@ const moodToEmoji = (mood: string) => {
   }
 };
 
-export default async function EntriesPage() {
-  const { data, error } = await supabase
-    .from("diary_entries")
-    .select("id, title, body, mood, created_at")
-    .order("created_at", { ascending: false });
+export default function EntriesPage() {
+  const [entries, setEntries] = useState<DiaryEntry[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  if (error) {
-    return (
-      <main className="min-h-screen px-4 py-8 max-w-2xl mx-auto">
-        <h1 className="text-2xl font-bold mb-4">日記一覧</h1>
-        <p className="text-red-600">Error: {error.message}</p>
-      </main>
-    );
-  }
+  useEffect(() => {
+    const load = async () => {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
 
-  const entries = (data ?? []) as DiaryEntry[];
+      if (!user) {
+        setLoading(false);
+        return;
+      }
+
+      const { data } = await supabase
+        .from("diary_entries")
+        .select("*")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false });
+
+      setEntries((data ?? []) as DiaryEntry[]);
+      setLoading(false);
+    };
+
+    load();
+  }, []);
 
   return (
-    <main className="min-h-screen px-4 py-8 max-w-2xl mx-auto">
-      <header className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold">日記一覧</h1>
-        <Link href="/entries/new">
-          <Button variant="outline" size="sm">
-            新しい日記を書く
-          </Button>
-        </Link>
-      </header>
+    <ProGate>
+      <main className="min-h-screen max-w-3xl mx-auto px-4 py-8 space-y-4">
+        <header className="flex items-center justify-between">
+          <h1 className="text-2xl font-bold">日記一覧</h1>
 
-      {entries.length === 0 ? (
-        <p className="text-sm text-gray-500">
-          まだ日記がありません。最初の1件を書いてみましょう。
-        </p>
-      ) : (
-        <div className="space-y-3">
+          <Link
+            href="/entries/new"
+            className="text-sm px-3 py-2 border rounded-md hover:bg-gray-50"
+          >
+            新規作成
+          </Link>
+        </header>
+
+        {loading && <p>読み込み中...</p>}
+
+        {!loading && entries.length === 0 && (
+          <p className="text-sm text-gray-600">
+            まだ日記がありません。「新規作成」から追加できます。
+          </p>
+        )}
+
+        <ul className="space-y-3">
           {entries.map((entry) => (
-            <Link key={entry.id} href={`/entries/${entry.id}`}>
-              <Card className="hover:shadow-sm transition">
-                <CardHeader className="flex flex-row items-start justify-between space-y-0">
-                  <div>
-                    <CardTitle className="text-base">
-                      {entry.title}
-                    </CardTitle>
-                    <CardDescription>
-                      {new Date(entry.created_at).toLocaleString("ja-JP")}
-                    </CardDescription>
-                  </div>
-                  <div className="text-2xl">
-                    {moodToEmoji(entry.mood)}
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-sm text-gray-700 line-clamp-2">
-                    {entry.body}
-                  </p>
-                </CardContent>
-              </Card>
-            </Link>
+            <li
+              key={entry.id}
+              className="rounded-xl border p-4 hover:bg-gray-50 transition"
+            >
+              <Link href={`/entries/${entry.id}`}>
+                <div className="flex items-center justify-between">
+                  <h2 className="font-semibold">{entry.title}</h2>
+                  <span className="text-2xl">{moodToEmoji(entry.mood)}</span>
+                </div>
+
+                <p className="text-xs text-gray-500">
+                  {new Date(entry.created_at).toLocaleDateString("ja-JP")}
+                </p>
+              </Link>
+            </li>
           ))}
-        </div>
-      )}
-    </main>
+        </ul>
+      </main>
+    </ProGate>
   );
 }
