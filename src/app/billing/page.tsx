@@ -1,9 +1,39 @@
 // src/app/billing/page.tsx
 "use client";
 
-import Link from "next/link";
+import { useState } from "react";
 
 export default function BillingPage() {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleSubscribe = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      const res = await fetch("/api/create-checkout-session", {
+        method: "POST",
+      });
+
+      const data = await res.json();
+
+      if (!res.ok || !data.url) {
+        console.error("Checkout error:", data);
+        setError(data.error ?? "決済ページの作成に失敗しました。");
+        setLoading(false);
+        return;
+      }
+
+      // Stripe Checkout へリダイレクト
+      window.location.href = data.url;
+    } catch (e) {
+      console.error(e);
+      setError("決済処理中にエラーが発生しました。");
+      setLoading(false);
+    }
+  };
+
   return (
     <main className="min-h-screen max-w-md mx-auto px-4 py-8 space-y-4">
       <h1 className="text-2xl font-bold">有料プラン（応援プラン）のご案内</h1>
@@ -16,22 +46,22 @@ export default function BillingPage() {
       </p>
 
       <ul className="text-sm text-gray-700 list-disc list-inside space-y-1">
-        <li>月額 200円（予定）</li>
+        <li>月額 200円</li>
         <li>AI解析機能やInsightsの利用</li>
         <li>今後の新機能を優先的に利用可能</li>
       </ul>
 
-      <p className="text-xs text-gray-500">
-        現在、決済周りの準備中のため、
-        実際の登録フローはもう少しだけお待ちください。
-      </p>
+      {error && (
+        <p className="text-xs text-red-600 whitespace-pre-wrap">{error}</p>
+      )}
 
-      <Link
-        href="/entries"
-        className="inline-block text-sm text-blue-600 underline"
+      <button
+        onClick={handleSubscribe}
+        disabled={loading}
+        className="mt-2 inline-flex items-center justify-center rounded-md border border-blue-500 px-4 py-2 text-sm font-medium text-blue-600 hover:bg-blue-50 disabled:opacity-50"
       >
-        日記一覧に戻る
-      </Link>
+        {loading ? "決済ページに移動中..." : "有料登録して応援する"}
+      </button>
     </main>
   );
 }
