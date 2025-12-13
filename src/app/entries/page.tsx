@@ -45,8 +45,17 @@ export default function EntriesPage() {
     return map;
   }, [entries]);
 
+  // 🔴 entryMap の中身確認
+  console.log(
+    "[entries] entryMap keys",
+    Array.from(entryMap.keys())
+  );
+
   useEffect(() => {
     const load = async () => {
+      // 🔴 month state 確認
+      console.log("[entries] month state", month);
+
       setLoading(true);
       const sb = supabaseBrowser();
 
@@ -55,20 +64,38 @@ export default function EntriesPage() {
       } = await sb.auth.getUser();
 
       if (!user) {
+        console.log("[entries] no user");
         setLoading(false);
         return;
       }
 
-      // 表示中の月の範囲だけ取る
-      const from = format(new Date(month.getFullYear(), month.getMonth(), 1), "yyyy-MM-dd");
-      const to = format(new Date(month.getFullYear(), month.getMonth() + 1, 0), "yyyy-MM-dd");
+      // 表示中の月の範囲
+      const from = format(
+        new Date(month.getFullYear(), month.getMonth(), 1),
+        "yyyy-MM-dd"
+      );
+      const to = format(
+        new Date(month.getFullYear(), month.getMonth() + 1, 0),
+        "yyyy-MM-dd"
+      );
 
-      const { data } = await sb
+      // 🔴 取得範囲確認
+      console.log("[entries] computed range", { from, to });
+
+      const { data, error } = await sb
         .from("diary_entries")
         .select("id, entry_date, mood")
         .eq("user_id", user.id)
         .gte("entry_date", from)
         .lte("entry_date", to);
+
+      // 🔴 Supabase 取得結果確認
+      console.log("[entries] fetch range", { from, to });
+      console.log("[entries] raw data", data);
+      console.log("[entries] count", data?.length);
+      if (error) {
+        console.error("[entries] fetch error", error);
+      }
 
       setEntries((data ?? []) as EntrySummary[]);
       setLoading(false);
@@ -98,6 +125,8 @@ export default function EntriesPage() {
             const dateStr = format(date, "yyyy-MM-dd");
             const entry = entryMap.get(dateStr);
 
+            console.log("[entries] click date", dateStr, entry);
+
             if (entry) {
               router.push(`/entries/${entry.id}`);
             } else {
@@ -105,7 +134,8 @@ export default function EntriesPage() {
             }
           }}
           modifiers={{
-            hasEntry: (date) => entryMap.has(format(date, "yyyy-MM-dd")),
+            hasEntry: (date) =>
+              entryMap.has(format(date, "yyyy-MM-dd")),
           }}
           modifiersClassNames={{
             hasEntry: "font-semibold",

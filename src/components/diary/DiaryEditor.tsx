@@ -299,6 +299,7 @@ export default function DiaryEditor() {
     try {
       const sb = supabaseBrowser();
 
+      // ① 日記を保存（1日1件）
       const { data, error } = await sb
         .from("diary_entries")
         .upsert(
@@ -316,25 +317,42 @@ export default function DiaryEditor() {
 
       if (error) throw error;
 
+      const entryId = String(data.id);
+
       // 保存成功 → 未保存判定をリセット + 下書き削除
       initialRef.current = { title, body };
       clearDraft();
       setLastSavedInfo(`最終保存: ${format(new Date(), "HH:mm")}`);
 
-      // ✅ 仕様固定：保存後は必ず forest
-      router.push(`/forest?new=${encodeURIComponent(String(data.id))}`);
+      // ② AI分析を自動実行（保存成功後にキック）
+      // - 失敗しても保存は成功してるので UX 優先で握り潰す
+      // - ただし、開発中は console に出す
+      void fetch("/api/analyze-diary", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ entryId }),
+      })
+        .then(async (res) => {
+          if (!res.ok) {
+            const text = await res.text().catch(() => "");
+            console.warn("[analyze-diary] failed", res.status, text);
+          }
+        })
+        .catch((e) => {
+          console.warn("[analyze-diary] network error", e);
+        });
+
+      // ③ 詳細へ
+      router.push(`/entries/${encodeURIComponent(entryId)}`);
     } catch (e: any) {
       console.error("SAVE ERROR", e);
-      alert(
-        typeof e === "object"
-          ? JSON.stringify(e, null, 2)
-          : String(e)
-      );
+      alert(typeof e === "object" ? JSON.stringify(e, null, 2) : String(e));
       setError(e?.message ?? "保存に失敗しました");
     } finally {
       setSaving(false);
     }
   };
+
 
   const onBack = () => {
     if (isDirty && !confirm("未保存の内容があります。戻りますか？（下書きは自動保存されます）")) return;
