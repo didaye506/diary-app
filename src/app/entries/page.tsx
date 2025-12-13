@@ -1,98 +1,134 @@
 "use client";
 
-import Link from "next/link";
-import { useEffect, useState } from "react";
-import { supabase } from "@/lib/supabaseClient";
-import { ProGate } from "@/components/ProGate";
+import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { createClient } from "@supabase/supabase-js";
+import { format } from "date-fns";
 
-type DiaryEntry = {
+import { Calendar, CalendarDayButton } from "@/components/ui/calendar";
+
+function supabaseBrowser() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+  const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+  return createClient(url, anon);
+}
+
+type EntrySummary = {
   id: string;
-  title: string;
-  mood: string;
-  created_at: string;
+  entry_date: string; // YYYY-MM-DD
+  mood: string | null;
 };
 
-const moodToEmoji = (mood: string) => {
+const moodToEmoji = (mood?: string | null) => {
   switch (mood) {
     case "good":
       return "😊";
     case "bad":
       return "😢";
-    default:
+    case "normal":
       return "😐";
+    default:
+      return "•";
   }
 };
 
 export default function EntriesPage() {
-  const [entries, setEntries] = useState<DiaryEntry[]>([]);
+  const router = useRouter();
+  const [month, setMonth] = useState<Date>(new Date());
+  const [entries, setEntries] = useState<EntrySummary[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // YYYY-MM-DD -> entry
+  const entryMap = useMemo(() => {
+    const map = new Map<string, EntrySummary>();
+    entries.forEach((e) => map.set(e.entry_date, e));
+    return map;
+  }, [entries]);
 
   useEffect(() => {
     const load = async () => {
+      setLoading(true);
+      const sb = supabaseBrowser();
+
       const {
         data: { user },
-      } = await supabase.auth.getUser();
+      } = await sb.auth.getUser();
 
       if (!user) {
         setLoading(false);
         return;
       }
 
-      const { data } = await supabase
-        .from("diary_entries")
-        .select("*")
-        .eq("user_id", user.id)
-        .order("created_at", { ascending: false });
+      // 表示中の月の範囲だけ取る
+      const from = format(new Date(month.getFullYear(), month.getMonth(), 1), "yyyy-MM-dd");
+      const to = format(new Date(month.getFullYear(), month.getMonth() + 1, 0), "yyyy-MM-dd");
 
-      setEntries((data ?? []) as DiaryEntry[]);
+      const { data } = await sb
+        .from("diary_entries")
+        .select("id, entry_date, mood")
+        .eq("user_id", user.id)
+        .gte("entry_date", from)
+        .lte("entry_date", to);
+
+      setEntries((data ?? []) as EntrySummary[]);
       setLoading(false);
     };
 
     load();
-  }, []);
+  }, [month]);
 
   return (
-    <ProGate>
-      <main className="min-h-screen max-w-3xl mx-auto px-4 py-8 space-y-4">
-        <header className="flex items-center justify-between">
-          <h1 className="text-2xl font-bold">日記一覧</h1>
-
-          <Link
-            href="/entries/new"
-            className="text-sm px-3 py-2 border rounded-md hover:bg-gray-50"
-          >
-            新規作成
-          </Link>
+    <div className="min-h-[100dvh] w-full bg-[#090c11]">
+      <div className="mx-auto w-full max-w-2xl px-5 py-8">
+        <header className="mb-6 flex items-center justify-between">
+          <h1 className="text-lg font-medium text-white/80">日記</h1>
+          <span className="text-xs text-white/40">
+            {loading ? "読み込み中…" : ""}
+          </span>
         </header>
 
-        {loading && <p>読み込み中...</p>}
+        <Calendar
+          mode="single"
+          month={month}
+          onMonthChange={setMonth}
+          selected={undefined}
+          onSelect={(date) => {
+            if (!date) return;
 
-        {!loading && entries.length === 0 && (
-          <p className="text-sm text-gray-600">
-            まだ日記がありません。「新規作成」から追加できます。
-          </p>
-        )}
+            const dateStr = format(date, "yyyy-MM-dd");
+            const entry = entryMap.get(dateStr);
 
-        <ul className="space-y-3">
-          {entries.map((entry) => (
-            <li
-              key={entry.id}
-              className="rounded-xl border p-4 hover:bg-gray-50 transition"
-            >
-              <Link href={`/entries/${entry.id}`}>
-                <div className="flex items-center justify-between">
-                  <h2 className="font-semibold">{entry.title}</h2>
-                  <span className="text-2xl">{moodToEmoji(entry.mood)}</span>
-                </div>
+            if (entry) {
+              router.push(`/entries/${entry.id}`);
+            } else {
+              router.push(`/write?date=${encodeURIComponent(dateStr)}`);
+            }
+          }}
+          modifiers={{
+            hasEntry: (date) => entryMap.has(format(date, "yyyy-MM-dd")),
+          }}
+          modifiersClassNames={{
+            hasEntry: "font-semibold",
+          }}
+          components={{
+            DayButton: function EntryDayButton(props) {
+              const dateStr = format(props.day.date, "yyyy-MM-dd");
+              const entry = entryMap.get(dateStr);
 
-                <p className="text-xs text-gray-500">
-                  {new Date(entry.created_at).toLocaleDateString("ja-JP")}
-                </p>
-              </Link>
-            </li>
-          ))}
-        </ul>
-      </main>
-    </ProGate>
+              return (
+                <CalendarDayButton {...props} className="relative">
+                  {props.children}
+                  {entry && (
+                    <span className="absolute bottom-1 right-1 text-[10px] leading-none">
+                      {moodToEmoji(entry.mood)}
+                    </span>
+                  )}
+                </CalendarDayButton>
+              );
+            },
+          }}
+        />
+      </div>
+    </div>
   );
 }

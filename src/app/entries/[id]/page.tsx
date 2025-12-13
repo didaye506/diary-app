@@ -1,162 +1,107 @@
-// src/app/entries/[id]/page.tsx
 "use client";
 
 import { useEffect, useState } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { createClient } from "@supabase/supabase-js";
 import Link from "next/link";
-import { supabase } from "@/lib/supabaseClient";
-import { Button } from "@/components/ui/button";
-import { AnalyzeDiaryButton } from "./AnalyzeDiaryButton";
-import { ProGate } from "@/components/ProGate";
 
-type DiaryEntry = {
+function supabaseBrowser() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+  const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+  return createClient(url, anon);
+}
+
+type Entry = {
   id: string;
-  title: string;
+  title: string | null;
   body: string;
-  mood: string;
-  created_at: string;
+  entry_date: string;   // YYYY-MM-DD
+  created_at: string;   // fallback用
 };
 
-const moodToEmoji = (mood: string) => {
-  switch (mood) {
-    case "good":
-      return "😊";
-    case "bad":
-      return "😢";
-    default:
-      return "😐";
-  }
-};
-
-export default function EntryDetailPage() {
-  const pathname = usePathname(); // "/entries/<id>"
-  const id = pathname.split("/").pop() ?? "";
-  const router = useRouter();
-
-  const [entry, setEntry] = useState<DiaryEntry | null>(null);
-  const [error, setError] = useState<string | null>(null);
+export default function EntryPage({ params }: { params: { id: string } }) {
+  const [entry, setEntry] = useState<Entry | null>(null);
   const [loading, setLoading] = useState(true);
-  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
-    const fetchEntry = async () => {
-      if (!id) {
-        setError("URL から id を取得できませんでした。");
+    const load = async () => {
+      setLoading(true);
+      const sb = supabaseBrowser();
+
+      // ✅ ログインユーザー取得（他人のID直打ち対策）
+      const {
+        data: { user },
+      } = await sb.auth.getUser();
+
+      if (!user) {
         setLoading(false);
         return;
       }
 
-      const { data, error } = await supabase
+      // ✅ entry_date を取る（これが編集導線のキー）
+      const { data, error } = await sb
         .from("diary_entries")
-        .select("*")
-        .eq("id", id)
+        .select("id,title,body,entry_date,created_at")
+        .eq("id", params.id)
+        .eq("user_id", user.id)
         .single();
 
-      if (error || !data) {
-        setError(error?.message ?? "データが見つかりませんでした。");
+      if (!error && data) {
+        setEntry(data as Entry);
       } else {
-        setEntry(data as DiaryEntry);
+        setEntry(null);
       }
       setLoading(false);
     };
 
-    fetchEntry();
-  }, [id]);
+    load();
+  }, [params.id]);
 
-  const handleDelete = async () => {
-    if (!entry) return;
-    const ok = window.confirm("本当にこの日記を削除しますか？");
-    if (!ok) return;
-
-    setDeleting(true);
-
-    const { error } = await supabase
-      .from("diary_entries")
-      .delete()
-      .eq("id", entry.id);
-
-    setDeleting(false);
-
-    if (error) {
-      alert("削除時にエラーが発生しました: " + error.message);
-      return;
-    }
-
-    router.push("/entries");
-  };
-
-  if (loading) {
-    return (
-      <ProGate>
-        <main className="min-h-screen px-4 py-8 max-w-2xl mx-auto">
-          <p>読み込み中...</p>
-        </main>
-      </ProGate>
-    );
-  }
-
-  if (error || !entry) {
-    return (
-      <ProGate>
-        <main className="min-h-screen px-4 py-8 max-w-2xl mx-auto">
-          <h1 className="text-xl font-bold mb-4">読み込みエラー</h1>
-          <p className="text-red-600 mb-4">{error}</p>
-          <p className="text-sm text-gray-600 mb-2">id: {id}</p>
-          <Link
-            href="/entries"
-            className="inline-block text-blue-600 underline"
-          >
-            一覧に戻る
-          </Link>
-        </main>
-      </ProGate>
-    );
-  }
+  const displayDate =
+    entry?.entry_date
+      ? new Date(`${entry.entry_date}T00:00:00`).toLocaleDateString("ja-JP")
+      : entry?.created_at
+        ? new Date(entry.created_at).toLocaleDateString("ja-JP")
+        : "";
 
   return (
-    <ProGate>
-      <main className="min-h-screen px-4 py-8 max-w-2xl mx-auto">
-        <header className="mb-4 flex items-center justify-between gap-2">
-          <Link
-            href="/entries"
-            className="text-sm text-blue-600 hover:underline"
-          >
-            ← 一覧に戻る
+    <div className="min-h-[100dvh] w-full bg-[#090c11]">
+      <div className="mx-auto w-full max-w-2xl px-5 py-8">
+        <div className="mb-6 flex items-center justify-between">
+          {/* ✅ 起点は /entries に統一 */}
+          <Link href="/entries" className="text-sm text-white/55 hover:text-white/70">
+            一覧へ戻る
           </Link>
 
-          <div className="flex gap-2">
-            <Link href={`/entries/${entry.id}/edit`}>
-              <Button variant="outline" size="sm">
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-white/35">{displayDate}</span>
+
+            {/* ✅ 編集は /write?date=entry_date に集約 */}
+            {entry?.entry_date ? (
+              <Link
+                href={`/write?date=${encodeURIComponent(entry.entry_date)}`}
+                className="rounded-full bg-white/10 px-3 py-1 text-xs text-white/70 hover:bg-white/14"
+              >
                 編集
-              </Button>
-            </Link>
-            <Button
-              variant="destructive"
-              size="sm"
-              onClick={handleDelete}
-              disabled={deleting}
-            >
-              {deleting ? "削除中..." : "削除"}
-            </Button>
+              </Link>
+            ) : null}
           </div>
-        </header>
-
-        <h1 className="text-3xl font-bold mb-2">{entry.title}</h1>
-
-        <div className="text-sm text-gray-500 mb-4">
-          {new Date(entry.created_at).toLocaleString("ja-JP")} ／{" "}
-          <span className="text-2xl">{moodToEmoji(entry.mood)}</span>
         </div>
 
-        <article className="prose whitespace-pre-wrap mb-6">
-          {entry.body}
-        </article>
+        {loading && <p className="text-sm text-white/50">読み込み中...</p>}
 
-        {/* AI 解析ボタン（ここも Pro 限定の世界なのでこのままでOK） */}
-        <div className="mt-4">
-          <AnalyzeDiaryButton diaryId={entry.id} diaryText={entry.body} />
-        </div>
-      </main>
-    </ProGate>
+        {!loading && !entry && (
+          <p className="text-sm text-white/50">日記が見つかりませんでした。</p>
+        )}
+
+        {!loading && entry && (
+          <>
+            {entry.title ? <h1 className="mb-4 text-lg text-white/80">{entry.title}</h1> : null}
+            <pre className="whitespace-pre-wrap break-words text-[15px] leading-7 text-white/75">
+              {entry.body}
+            </pre>
+          </>
+        )}
+      </div>
+    </div>
   );
 }
